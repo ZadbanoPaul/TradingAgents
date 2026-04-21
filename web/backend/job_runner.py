@@ -88,6 +88,13 @@ def _serialize_final_state(final_state: dict[str, Any]) -> dict[str, Any]:
         "news_report": _short(final_state.get("news_report") or ""),
         "news_web_report": _short(final_state.get("news_web_report") or ""),
         "fundamentals_report": _short(final_state.get("fundamentals_report") or ""),
+        "orchestrator_report": _short(final_state.get("orchestrator_report") or ""),
+        "accounting_quality_report": _short(final_state.get("accounting_quality_report") or ""),
+        "valuation_report": _short(final_state.get("valuation_report") or ""),
+        "sector_report": _short(final_state.get("sector_report") or ""),
+        "catalyst_report": _short(final_state.get("catalyst_report") or ""),
+        "data_quality_report": _short(final_state.get("data_quality_report") or ""),
+        "scoring_report": _short(final_state.get("scoring_report") or ""),
         "investment_plan": _short(final_state.get("investment_plan") or ""),
         "trader_investment_plan": _short(final_state.get("trader_investment_plan") or ""),
         "final_trade_decision": _short(final_state.get("final_trade_decision") or ""),
@@ -185,9 +192,15 @@ def run_job(db: Session, job_id: int) -> None:
             "news_date_to",
             "news_recent_hours",
             "enable_news_web_agent",
+            "full_institutional_pipeline",
         ):
             if k in cfg:
                 base[k] = cfg[k]
+        im = cfg.get("instrument_meta")
+        if isinstance(im, dict) and im:
+            merged = dict(base.get("instrument_meta") or {})
+            merged.update({str(a).strip(): b for a, b in im.items() if str(a).strip()})
+            base["instrument_meta"] = merged
         base["_job_trade_date"] = str(job.trade_date).strip()[:10]
 
         analysts = cfg.get("analysts") or ["market", "social", "news", "fundamentals"]

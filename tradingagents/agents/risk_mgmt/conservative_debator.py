@@ -1,3 +1,4 @@
+from tradingagents.agents.utils.state_report_bundle import extended_reports_block, news_with_web
 from tradingagents.prompts import keys as prompt_keys
 from tradingagents.prompts import resolve_prompt
 from tradingagents.prompts.defaults import DEFAULT_PROMPTS
@@ -14,9 +15,7 @@ def create_conservative_debator(llm):
 
         market_research_report = state["market_report"]
         sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        if state.get("news_web_report"):
-            news_report = f"{news_report}\n\n--- News Web (RSS) ---\n{state['news_web_report']}"
+        news_report = news_with_web(state)
         fundamentals_report = state["fundamentals_report"]
 
         trader_decision = state["trader_investment_plan"]
@@ -35,6 +34,9 @@ def create_conservative_debator(llm):
             current_aggressive_response=current_aggressive_response,
             current_neutral_response=current_neutral_response,
         )
+        annex = extended_reports_block(state)
+        if annex:
+            prompt = f"{prompt}\n\n--- Institutional research annex ---\n{annex}"
 
         response = llm.invoke(prompt)
 

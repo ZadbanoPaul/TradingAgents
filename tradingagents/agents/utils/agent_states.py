@@ -58,6 +58,14 @@ class AgentState(MessagesState):
     news_web_report: Annotated[str, "Report from the News Web Agent (RSS / public headlines)"]
     fundamentals_report: Annotated[str, "Report from the Fundamentals Researcher"]
 
+    orchestrator_report: Annotated[str, "Orchestrator coordination / evidence plan"]
+    accounting_quality_report: Annotated[str, "Accounting quality and earnings integrity"]
+    valuation_report: Annotated[str, "Valuation and margin of safety"]
+    sector_report: Annotated[str, "Sector and competitive position"]
+    catalyst_report: Annotated[str, "Catalysts and event timing"]
+    data_quality_report: Annotated[str, "Data quality and source integrity"]
+    scoring_report: Annotated[str, "Weighted investment scoring summary"]
+
     # researcher team discussion step
     investment_debate_state: Annotated[
         InvestDebateState, "Current state of the debate on if to invest or not"

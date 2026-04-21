@@ -2,6 +2,7 @@
 
 from typing import Any, Dict
 
+from tradingagents.agents.utils.state_report_bundle import extended_reports_block, news_with_web
 from tradingagents.prompts import keys as prompt_keys
 from tradingagents.prompts import resolve_prompt
 from tradingagents.prompts.defaults import DEFAULT_PROMPTS
@@ -26,14 +27,15 @@ class Reflector:
         """Extract the current market situation from the state."""
         curr_market_report = current_state["market_report"]
         curr_sentiment_report = current_state["sentiment_report"]
-        curr_news_report = current_state["news_report"]
-        if current_state.get("news_web_report"):
-            curr_news_report = (
-                f"{curr_news_report}\n\n--- News Web (RSS) ---\n{current_state['news_web_report']}"
-            )
+        curr_news_report = news_with_web(current_state)
         curr_fundamentals_report = current_state["fundamentals_report"]
-
-        return f"{curr_market_report}\n\n{curr_sentiment_report}\n\n{curr_news_report}\n\n{curr_fundamentals_report}"
+        base = (
+            f"{curr_market_report}\n\n{curr_sentiment_report}\n\n{curr_news_report}\n\n{curr_fundamentals_report}"
+        )
+        extra = extended_reports_block(current_state)
+        if extra:
+            return f"{base}\n\n{extra}"
+        return base
 
     def _reflect_on_component(
         self, component_type: str, report: str, situation: str, returns_losses

@@ -4,12 +4,20 @@ from tradingagents.prompts.defaults import DEFAULT_PROMPTS
 from tradingagents.prompts import keys as k
 
 PROMPT_UI = [
+    (k.INSTITUTIONAL_GLOBAL_SYSTEM, "Kontrakt globalny (institutional)", "Wspólne zasady jakości decyzji i formatu wyjścia dla całej rodziny agentów."),
     (k.TOOL_COLLABORATOR_SYSTEM, "Współpraca narzędzi (analitycy)", "Szablon systemowy dla analityków korzystających z narzędzi LangChain."),
+    (k.ORCHESTRATOR_SYSTEM, "Orchestrator", "Koordynacja fali analityków, braki danych, gotowość decyzyjna."),
+    (k.DATA_QUALITY_SYSTEM, "Data Quality Agent", "Ocena kompletności i wiarygodności dowodów przed decyzją."),
     (k.MARKET_ANALYST_SYSTEM, "Analityk rynku (techniczny)", "Treść roli i instrukcji wyboru wskaźników."),
     (k.SOCIAL_MEDIA_ANALYST_SYSTEM, "Analityk social / sentyment", "Zakres analizy social media i newsów spółki."),
     (k.NEWS_ANALYST_SYSTEM, "Analityk newsów / makro", "Zakres raportu makro i newsów."),
     (k.NEWS_WEB_ANALYST_SYSTEM, "News Web Agent (RSS)", "Agent uzupełniający nagłówki z Google News RSS."),
     (k.FUNDAMENTALS_ANALYST_SYSTEM, "Analityk fundamentalny", "Zakres raportu fundamentalnego."),
+    (k.ACCOUNTING_QUALITY_SYSTEM, "Accounting Quality Agent", "Jakość zysków i rachunkowości."),
+    (k.VALUATION_SYSTEM, "Valuation Analyst", "Wycena względem fundamentów i scenariuszy."),
+    (k.SECTOR_SYSTEM, "Sector / Competitive Analyst", "Sektor, atrakcyjność rynku, pozycja konkurencyjna."),
+    (k.CATALYST_SYSTEM, "Catalyst Analyst", "Zdarzenia, timing, materialność katalizatorów."),
+    (k.SCORING_SYSTEM, "Scoring Agent", "Ważona punktacja przez kategorie."),
     (k.TRADER_SYSTEM, "Trader", "Instrukcje dla agenta tradera (placeholdery: {past_memory_str})."),
     (k.BULL_RESEARCHER, "Research: Bull", "Szablon debaty byczej (placeholdery raportów i historii)."),
     (k.BEAR_RESEARCHER, "Research: Bear", "Szablon debaty niedźwiedziej."),

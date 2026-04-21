@@ -1,12 +1,12 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from tradingagents.agents.analysts.institutional_chain_analyst import build_tool_system_message
 from tradingagents.agents.utils.agent_utils import (
-    build_instrument_context,
     get_balance_sheet,
     get_cashflow,
     get_fundamentals,
     get_income_statement,
-    get_language_instruction,
 )
+from tradingagents.agents.utils.institutional_context import build_extended_instrument_block
 from tradingagents.prompts import keys as prompt_keys
 from tradingagents.prompts import resolve_prompt
 from tradingagents.prompts.defaults import DEFAULT_PROMPTS
@@ -15,21 +15,14 @@ from tradingagents.prompts.defaults import DEFAULT_PROMPTS
 def create_fundamentals_analyst(llm):
     def fundamentals_analyst_node(state):
         current_date = state["trade_date"]
-        instrument_context = build_instrument_context(state["company_of_interest"])
-
         tools = [
             get_fundamentals,
             get_balance_sheet,
             get_cashflow,
             get_income_statement,
         ]
-
-        system_message = (
-            resolve_prompt(
-                prompt_keys.FUNDAMENTALS_ANALYST_SYSTEM,
-                DEFAULT_PROMPTS[prompt_keys.FUNDAMENTALS_ANALYST_SYSTEM],
-            )
-            + get_language_instruction()
+        system_message = build_tool_system_message(
+            prompt_keys.FUNDAMENTALS_ANALYST_SYSTEM, state, tools
         )
 
         collab = resolve_prompt(
@@ -50,7 +43,11 @@ def create_fundamentals_analyst(llm):
         prompt = prompt.partial(system_message=system_message)
         prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
         prompt = prompt.partial(current_date=current_date)
-        prompt = prompt.partial(instrument_context=instrument_context)
+        prompt = prompt.partial(
+            instrument_context=build_extended_instrument_block(
+                state, tool_names=", ".join(t.name for t in tools)
+            )
+        )
 
         chain = prompt | llm.bind_tools(tools)
 

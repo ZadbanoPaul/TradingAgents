@@ -23,15 +23,15 @@ from tradingagents.dataflows.config import set_config
 
 # Import the new abstract tool methods from agent_utils
 from tradingagents.agents.utils.agent_utils import (
-    get_stock_data,
-    get_indicators,
-    get_fundamentals,
     get_balance_sheet,
     get_cashflow,
-    get_income_statement,
-    get_news,
-    get_insider_transactions,
+    get_fundamentals,
     get_global_news,
+    get_income_statement,
+    get_indicators,
+    get_insider_transactions,
+    get_news,
+    get_stock_data,
 )
 from tradingagents.agents.utils.news_web_tools import search_web_ticker_news
 
@@ -142,8 +142,31 @@ class TradingAgentsGraph:
         self.ticker = None
         self.log_states_dict = {}  # date to full state dict
 
-        # Set up the graph
-        self.graph = self.graph_setup.setup_graph(selected_analysts)
+        self.selected_analysts = self._resolve_pipeline(selected_analysts)
+        self.graph = self.graph_setup.setup_graph(self.selected_analysts)
+
+    def _resolve_pipeline(self, selected_analysts):
+        """Domyślnie pełna ścieżka instytucjonalna v2; wyłącz przez ``full_institutional_pipeline: false`` w configu."""
+        if not self.config.get("full_institutional_pipeline", True):
+            return list(
+                selected_analysts
+                or ["market", "social", "news", "fundamentals"]
+            )
+        seq = [
+            "orchestrator",
+            "market",
+            "social",
+            "news",
+            "fundamentals",
+            "accounting_quality",
+            "valuation",
+            "sector",
+            "catalyst",
+        ]
+        if self.config.get("enable_news_web_agent"):
+            seq.append("news_web")
+        seq.extend(["data_quality", "scoring"])
+        return seq
 
     def _get_provider_kwargs(self) -> Dict[str, Any]:
         """Get provider-specific kwargs for LLM client creation."""
@@ -197,6 +220,17 @@ class TradingAgentsGraph:
                 ]
             ),
             "news_web": ToolNode([search_web_ticker_news]),
+            "valuation": ToolNode(
+                [
+                    get_stock_data,
+                    get_fundamentals,
+                    get_balance_sheet,
+                    get_cashflow,
+                    get_income_statement,
+                ]
+            ),
+            "sector": ToolNode([get_fundamentals, get_news, get_global_news]),
+            "catalyst": ToolNode([get_news, get_global_news]),
         }
 
     def propagate(self, company_name, trade_date):
@@ -244,6 +278,13 @@ class TradingAgentsGraph:
             "news_report": final_state["news_report"],
             "news_web_report": final_state.get("news_web_report", ""),
             "fundamentals_report": final_state["fundamentals_report"],
+            "orchestrator_report": final_state.get("orchestrator_report", ""),
+            "accounting_quality_report": final_state.get("accounting_quality_report", ""),
+            "valuation_report": final_state.get("valuation_report", ""),
+            "sector_report": final_state.get("sector_report", ""),
+            "catalyst_report": final_state.get("catalyst_report", ""),
+            "data_quality_report": final_state.get("data_quality_report", ""),
+            "scoring_report": final_state.get("scoring_report", ""),
             "investment_debate_state": {
                 "bull_history": final_state["investment_debate_state"]["bull_history"],
                 "bear_history": final_state["investment_debate_state"]["bear_history"],

@@ -1,10 +1,34 @@
 # TradingAgents/graph/setup.py
 
-from typing import Any, Dict
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import *
+from tradingagents.agents.analysts.institutional_chain_analyst import (
+    create_institutional_tool_analyst,
+)
+from tradingagents.agents.analysts.orchestrator_analyst import create_orchestrator_analyst
+from tradingagents.agents.analysts.pipeline_llm_analysts import (
+    create_data_quality_analyst,
+    create_scoring_analyst,
+)
+from tradingagents.agents.utils.agent_utils import (
+    get_balance_sheet,
+    get_cashflow,
+    get_fundamentals,
+    get_global_news,
+    get_income_statement,
+    get_news,
+    get_stock_data,
+)
+from tradingagents.agents.utils.news_web_tools import search_web_ticker_news
+from tradingagents.agents.utils.technical_indicators_tools import get_indicators
+from tradingagents.prompts import keys as prompt_keys
+
 from tradingagents.agents.utils.agent_states import AgentState
 
 from .conditional_logic import ConditionalLogic
@@ -12,6 +36,9 @@ from .conditional_logic import ConditionalLogic
 
 def _title_case_id(analyst_type: str) -> str:
     return " ".join(part.capitalize() for part in analyst_type.split("_"))
+
+
+_NO_TOOL = frozenset({"orchestrator", "data_quality", "scoring"})
 
 
 class GraphSetup:
@@ -29,7 +56,6 @@ class GraphSetup:
         portfolio_manager_memory,
         conditional_logic: ConditionalLogic,
     ):
-        """Initialize with required components."""
         self.quick_thinking_llm = quick_thinking_llm
         self.deep_thinking_llm = deep_thinking_llm
         self.tool_nodes = tool_nodes
@@ -40,90 +66,128 @@ class GraphSetup:
         self.portfolio_manager_memory = portfolio_manager_memory
         self.conditional_logic = conditional_logic
 
-    def setup_graph(
-        self, selected_analysts=["market", "social", "news", "fundamentals"]
-    ):
-        """Set up and compile the agent workflow graph.
-
-        Args:
-            selected_analysts (list): List of analyst types to include. Options are:
-                - "market": Market analyst
-                - "social": Social media analyst
-                - "news": News analyst
-                - "fundamentals": Fundamentals analyst
-        """
-        if len(selected_analysts) == 0:
+    def setup_graph(self, selected_analysts: List[str] | None = None):
+        if not selected_analysts:
             raise ValueError("Trading Agents Graph Setup Error: no analysts selected!")
 
-        # Create analyst nodes
-        analyst_nodes = {}
-        delete_nodes = {}
-        tool_nodes = {}
+        analyst_nodes: dict[str, Any] = {}
+        delete_nodes: dict[str, Any] = {}
+        local_tool_nodes: dict[str, ToolNode] = {}
 
-        if "market" in selected_analysts:
-            analyst_nodes["market"] = create_market_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["market"] = create_msg_delete()
-            tool_nodes["market"] = self.tool_nodes["market"]
+        for analyst_type in selected_analysts:
+            label = _title_case_id(analyst_type)
 
-        if "social" in selected_analysts:
-            analyst_nodes["social"] = create_social_media_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["social"] = create_msg_delete()
-            tool_nodes["social"] = self.tool_nodes["social"]
+            if analyst_type == "orchestrator":
+                analyst_nodes["orchestrator"] = create_orchestrator_analyst(
+                    self.quick_thinking_llm
+                )
+                delete_nodes["orchestrator"] = create_msg_delete()
+                continue
 
-        if "news" in selected_analysts:
-            analyst_nodes["news"] = create_news_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["news"] = create_msg_delete()
-            tool_nodes["news"] = self.tool_nodes["news"]
+            if analyst_type == "data_quality":
+                analyst_nodes["data_quality"] = create_data_quality_analyst(
+                    self.deep_thinking_llm, prompt_keys.DATA_QUALITY_SYSTEM
+                )
+                delete_nodes["data_quality"] = create_msg_delete()
+                continue
 
-        if "fundamentals" in selected_analysts:
-            analyst_nodes["fundamentals"] = create_fundamentals_analyst(
-                self.quick_thinking_llm
-            )
-            delete_nodes["fundamentals"] = create_msg_delete()
-            tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
+            if analyst_type == "scoring":
+                analyst_nodes["scoring"] = create_scoring_analyst(
+                    self.deep_thinking_llm, prompt_keys.SCORING_SYSTEM
+                )
+                delete_nodes["scoring"] = create_msg_delete()
+                continue
 
-        if "news_web" in selected_analysts:
-            analyst_nodes["news_web"] = create_news_web_analyst(self.quick_thinking_llm)
-            delete_nodes["news_web"] = create_msg_delete()
-            tool_nodes["news_web"] = self.tool_nodes["news_web"]
+            if analyst_type == "market":
+                analyst_nodes["market"] = create_market_analyst(self.quick_thinking_llm)
+                delete_nodes["market"] = create_msg_delete()
+                local_tool_nodes["market"] = self.tool_nodes["market"]
+            elif analyst_type == "social":
+                analyst_nodes["social"] = create_social_media_analyst(self.quick_thinking_llm)
+                delete_nodes["social"] = create_msg_delete()
+                local_tool_nodes["social"] = self.tool_nodes["social"]
+            elif analyst_type == "news":
+                analyst_nodes["news"] = create_news_analyst(self.quick_thinking_llm)
+                delete_nodes["news"] = create_msg_delete()
+                local_tool_nodes["news"] = self.tool_nodes["news"]
+            elif analyst_type == "fundamentals":
+                analyst_nodes["fundamentals"] = create_fundamentals_analyst(
+                    self.quick_thinking_llm
+                )
+                delete_nodes["fundamentals"] = create_msg_delete()
+                local_tool_nodes["fundamentals"] = self.tool_nodes["fundamentals"]
+            elif analyst_type == "news_web":
+                analyst_nodes["news_web"] = create_news_web_analyst(self.quick_thinking_llm)
+                delete_nodes["news_web"] = create_msg_delete()
+                local_tool_nodes["news_web"] = self.tool_nodes["news_web"]
+            elif analyst_type == "accounting_quality":
+                analyst_nodes["accounting_quality"] = create_institutional_tool_analyst(
+                    self.quick_thinking_llm,
+                    body_key=prompt_keys.ACCOUNTING_QUALITY_SYSTEM,
+                    output_state_field="accounting_quality_report",
+                    tools=[
+                        get_fundamentals,
+                        get_balance_sheet,
+                        get_cashflow,
+                        get_income_statement,
+                    ],
+                )
+                delete_nodes["accounting_quality"] = create_msg_delete()
+                local_tool_nodes["accounting_quality"] = self.tool_nodes["fundamentals"]
+            elif analyst_type == "valuation":
+                analyst_nodes["valuation"] = create_institutional_tool_analyst(
+                    self.quick_thinking_llm,
+                    body_key=prompt_keys.VALUATION_SYSTEM,
+                    output_state_field="valuation_report",
+                    tools=[
+                        get_fundamentals,
+                        get_balance_sheet,
+                        get_cashflow,
+                        get_income_statement,
+                        get_stock_data,
+                    ],
+                )
+                delete_nodes["valuation"] = create_msg_delete()
+                local_tool_nodes["valuation"] = self.tool_nodes["valuation"]
+            elif analyst_type == "sector":
+                analyst_nodes["sector"] = create_institutional_tool_analyst(
+                    self.quick_thinking_llm,
+                    body_key=prompt_keys.SECTOR_SYSTEM,
+                    output_state_field="sector_report",
+                    tools=[get_fundamentals, get_news, get_global_news],
+                )
+                delete_nodes["sector"] = create_msg_delete()
+                local_tool_nodes["sector"] = self.tool_nodes["sector"]
+            elif analyst_type == "catalyst":
+                analyst_nodes["catalyst"] = create_institutional_tool_analyst(
+                    self.quick_thinking_llm,
+                    body_key=prompt_keys.CATALYST_SYSTEM,
+                    output_state_field="catalyst_report",
+                    tools=[get_news, get_global_news],
+                )
+                delete_nodes["catalyst"] = create_msg_delete()
+                local_tool_nodes["catalyst"] = self.tool_nodes["catalyst"]
+            else:
+                raise ValueError(f"Unknown analyst type in graph: {analyst_type}")
 
-        # Create researcher and manager nodes
-        bull_researcher_node = create_bull_researcher(
-            self.quick_thinking_llm, self.bull_memory
-        )
-        bear_researcher_node = create_bear_researcher(
-            self.quick_thinking_llm, self.bear_memory
-        )
-        research_manager_node = create_research_manager(
-            self.deep_thinking_llm, self.invest_judge_memory
-        )
+        bull_researcher_node = create_bull_researcher(self.quick_thinking_llm, self.bull_memory)
+        bear_researcher_node = create_bear_researcher(self.quick_thinking_llm, self.bear_memory)
+        research_manager_node = create_research_manager(self.deep_thinking_llm, self.invest_judge_memory)
         trader_node = create_trader(self.quick_thinking_llm, self.trader_memory)
-
-        # Create risk analysis nodes
         aggressive_analyst = create_aggressive_debator(self.quick_thinking_llm)
         neutral_analyst = create_neutral_debator(self.quick_thinking_llm)
         conservative_analyst = create_conservative_debator(self.quick_thinking_llm)
-        portfolio_manager_node = create_portfolio_manager(
-            self.deep_thinking_llm, self.portfolio_manager_memory
-        )
+        portfolio_manager_node = create_portfolio_manager(self.deep_thinking_llm, self.portfolio_manager_memory)
 
-        # Create workflow
         workflow = StateGraph(AgentState)
 
-        # Add analyst nodes to the graph
         for analyst_type, node in analyst_nodes.items():
             label = _title_case_id(analyst_type)
             workflow.add_node(f"{label} Analyst", node)
             workflow.add_node(f"Msg Clear {label}", delete_nodes[analyst_type])
-            workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
+            if analyst_type not in _NO_TOOL:
+                workflow.add_node(f"tools_{analyst_type}", local_tool_nodes[analyst_type])
 
-        # Add other nodes
         workflow.add_node("Bull Researcher", bull_researcher_node)
         workflow.add_node("Bear Researcher", bear_researcher_node)
         workflow.add_node("Research Manager", research_manager_node)
@@ -133,35 +197,31 @@ class GraphSetup:
         workflow.add_node("Conservative Analyst", conservative_analyst)
         workflow.add_node("Portfolio Manager", portfolio_manager_node)
 
-        # Define edges
-        # Start with the first analyst
-        first_analyst = selected_analysts[0]
-        workflow.add_edge(START, f"{_title_case_id(first_analyst)} Analyst")
+        first = selected_analysts[0]
+        workflow.add_edge(START, f"{_title_case_id(first)} Analyst")
 
-        # Connect analysts in sequence
         for i, analyst_type in enumerate(selected_analysts):
             label = _title_case_id(analyst_type)
             current_analyst = f"{label} Analyst"
-            current_tools = f"tools_{analyst_type}"
             current_clear = f"Msg Clear {label}"
 
-            # Add conditional edges for current analyst
-            workflow.add_conditional_edges(
-                current_analyst,
-                getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
-                [current_tools, current_clear],
-            )
-            workflow.add_edge(current_tools, current_analyst)
+            if analyst_type in _NO_TOOL:
+                workflow.add_edge(current_analyst, current_clear)
+            else:
+                current_tools = f"tools_{analyst_type}"
+                workflow.add_conditional_edges(
+                    current_analyst,
+                    getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
+                    [current_tools, current_clear],
+                )
+                workflow.add_edge(current_tools, current_analyst)
 
-            # Connect to next analyst or to Bull Researcher if this is the last analyst
             if i < len(selected_analysts) - 1:
                 next_label = _title_case_id(selected_analysts[i + 1])
-                next_analyst = f"{next_label} Analyst"
-                workflow.add_edge(current_clear, next_analyst)
+                workflow.add_edge(current_clear, f"{next_label} Analyst")
             else:
                 workflow.add_edge(current_clear, "Bull Researcher")
 
-        # Add remaining edges
         workflow.add_conditional_edges(
             "Bull Researcher",
             self.conditional_logic.should_continue_debate,
@@ -204,8 +264,6 @@ class GraphSetup:
                 "Portfolio Manager": "Portfolio Manager",
             },
         )
-
         workflow.add_edge("Portfolio Manager", END)
 
-        # Compile and return
         return workflow.compile()

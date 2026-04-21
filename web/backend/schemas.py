@@ -114,6 +114,14 @@ class JobCreate(BaseModel):
         default="en",
         description="Wersja językowa raportu: en → English, pl → Polish (output_language w workerze).",
     )
+    instrument_meta: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Opcjonalne pola kontekstu instrumentu (v2): company_name, exchange, sector, benchmark, limity ryzyka itd.",
+    )
+    full_institutional_pipeline: Optional[bool] = Field(
+        default=None,
+        description="Jeśli podane, nadpisuje domyślną pełną ścieżkę instytucjonalną (false = tylko analysts z joba).",
+    )
 
 
 class JobOut(BaseModel):

@@ -50,6 +50,34 @@ class ConditionalLogic:
             return "tools_news_web"
         return "Msg Clear News Web"
 
+    def should_continue_accounting_quality(self, state: AgentState):
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools_accounting_quality"
+        return "Msg Clear Accounting Quality"
+
+    def should_continue_valuation(self, state: AgentState):
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools_valuation"
+        return "Msg Clear Valuation"
+
+    def should_continue_sector(self, state: AgentState):
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools_sector"
+        return "Msg Clear Sector"
+
+    def should_continue_catalyst(self, state: AgentState):
+        messages = state["messages"]
+        last_message = messages[-1]
+        if last_message.tool_calls:
+            return "tools_catalyst"
+        return "Msg Clear Catalyst"
+
     def should_continue_debate(self, state: AgentState) -> str:
         """Determine if debate should continue."""
 

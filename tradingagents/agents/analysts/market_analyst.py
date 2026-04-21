@@ -1,10 +1,10 @@
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from tradingagents.agents.analysts.institutional_chain_analyst import build_tool_system_message
 from tradingagents.agents.utils.agent_utils import (
-    build_instrument_context,
     get_indicators,
-    get_language_instruction,
     get_stock_data,
 )
+from tradingagents.agents.utils.institutional_context import build_extended_instrument_block
 from tradingagents.dataflows.config import get_config
 from tradingagents.indicators_catalog import format_indicator_policy_for_market_prompt
 from tradingagents.prompts import keys as prompt_keys
@@ -16,21 +16,17 @@ def create_market_analyst(llm):
 
     def market_analyst_node(state):
         current_date = state["trade_date"]
-        instrument_context = build_instrument_context(state["company_of_interest"])
-
         tools = [
             get_stock_data,
             get_indicators,
         ]
-
+        instrument_context = build_tool_system_message(
+            prompt_keys.MARKET_ANALYST_SYSTEM, state, tools
+        )
         system_message = (
-            resolve_prompt(
-                prompt_keys.MARKET_ANALYST_SYSTEM,
-                DEFAULT_PROMPTS[prompt_keys.MARKET_ANALYST_SYSTEM],
-            )
+            instrument_context
             + "\n\n"
             + format_indicator_policy_for_market_prompt(get_config())
-            + get_language_instruction()
         )
 
         collab = resolve_prompt(
@@ -51,7 +47,11 @@ def create_market_analyst(llm):
         prompt = prompt.partial(system_message=system_message)
         prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
         prompt = prompt.partial(current_date=current_date)
-        prompt = prompt.partial(instrument_context=instrument_context)
+        prompt = prompt.partial(
+            instrument_context=build_extended_instrument_block(
+                state, tool_names=", ".join(t.name for t in tools)
+            )
+        )
 
         chain = prompt | llm.bind_tools(tools)
 

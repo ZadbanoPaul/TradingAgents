@@ -66,6 +66,10 @@ def create_job(
     }
     if body.reasoning is not None and str(body.reasoning).strip() != "":
         cfg["openai_reasoning_effort"] = str(body.reasoning).strip()
+    if body.instrument_meta is not None:
+        cfg["instrument_meta"] = body.instrument_meta
+    if body.full_institutional_pipeline is not None:
+        cfg["full_institutional_pipeline"] = bool(body.full_institutional_pipeline)
     job = AnalysisJob(
         user_id=user.id,
         ticker=body.ticker.strip().upper(),

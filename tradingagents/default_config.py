@@ -46,4 +46,24 @@ DEFAULT_CONFIG = {
     "news_date_to": None,
     "news_recent_hours": 48,
     "_job_trade_date": None,
+    # Metadane instrumentu (opcjonalnie z joba / UI) — wypełniają rozszerzony kontekst v2
+    "instrument_meta": {
+        "company_name": "",
+        "exchange": "",
+        "country": "",
+        "currency": "",
+        "sector": "",
+        "industry": "",
+        "asset_type": "equity",
+        "strategy_style": "quality",
+        "benchmark": "",
+        "portfolio_context": "",
+        "existing_position": "",
+        "max_position_size": "",
+        "risk_budget": "",
+        "liquidity_constraints": "",
+        "tax_constraints": "",
+    },
+    # Pełna instytucjonalna ścieżka analityków (LangGraph)
+    "full_institutional_pipeline": True,
 }
