@@ -21,6 +21,7 @@ const REPORT_KEYS: { key: string; label: string }[] = [
   { key: "investment_plan", label: "Research Manager" },
   { key: "trader_investment_plan", label: "Trader" },
   { key: "final_trade_decision", label: "Decyzja końcowa (Portfolio Manager)" },
+  { key: "portfolio_synthesis_report", label: "Synteza portfela (LLM)" },
 ];
 
 export default function Live() {

@@ -124,6 +124,35 @@ class JobCreate(BaseModel):
     )
 
 
+class PortfolioSynthesisJobCreate(BaseModel):
+    """Kolejka joba typu „synteza portfela LLM” (agregacja zakończonych analiz jednego tickera)."""
+
+    source_job_ids: list[int] = Field(min_length=1, description="ID zakończonych jobów (completed)")
+    notional_usd: float = Field(gt=0, description="Nominał portfela w USD")
+    num_positions: int = Field(default=8, ge=1, le=64)
+    include_minute_last_day: bool = Field(
+        default=False,
+        description="Opcjonalne próbki świec 1m (ostatni dzień) — jak w portfolio-draft.",
+    )
+    trade_date: Optional[str] = Field(
+        default=None,
+        description="YYYY-MM-DD zapisywany w wierszu joba; domyślnie dzisiaj (UTC).",
+    )
+    max_context_chars: int = Field(default=90_000, ge=5000, le=200_000)
+    report_language: Literal["en", "pl"] = Field(
+        default="en",
+        description="Język syntezy LLM.",
+    )
+    llm_provider: str = Field(default="openai")
+    quick_think_llm: str = Field(default="gpt-4o-mini")
+    deep_think_llm: str = Field(default="gpt-4o")
+    reasoning: Optional[str] = Field(
+        default=None,
+        description="OpenAI: reasoning.effort dla modeli wspierających parametr.",
+    )
+    background: bool = Field(default=True, description="Zachowane dla spójności API (job zawsze w tle).")
+
+
 class JobOut(BaseModel):
     id: int
     ticker: str

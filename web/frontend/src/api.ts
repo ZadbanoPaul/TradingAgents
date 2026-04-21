@@ -158,6 +158,21 @@ export const Jobs = {
   list: () => api<JobOut[]>("/api/jobs"),
   create: (body: Record<string, unknown>) =>
     api<JobOut>("/api/jobs", { method: "POST", json: body }),
+  createPortfolioSynthesis: (body: {
+    source_job_ids: number[];
+    notional_usd: number;
+    num_positions?: number;
+    include_minute_last_day?: boolean;
+    trade_date?: string;
+    max_context_chars?: number;
+    report_language?: "en" | "pl";
+    llm_provider?: string;
+    quick_think_llm?: string;
+    deep_think_llm?: string;
+    reasoning?: string | null;
+    background?: boolean;
+  }) =>
+    api<JobOut>("/api/jobs/portfolio-synthesis", { method: "POST", json: body }),
   get: (id: number) => api<JobDetail>(`/api/jobs/${id}`),
 };
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Insights, type CompletedJobRow } from "../api";
+import { Insights, Jobs, type CompletedJobRow } from "../api";
 
 export default function PortfolioWorkbench() {
   const [from, setFrom] = useState("");
@@ -13,6 +13,7 @@ export default function PortfolioWorkbench() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
+  const [synthJobId, setSynthJobId] = useState<number | null>(null);
 
   async function loadJobs() {
     setBusy(true);
@@ -62,6 +63,30 @@ export default function PortfolioWorkbench() {
     }
   }
 
+  async function queuePortfolioSynthesis() {
+    if (!selectedIds.length) {
+      setErr("Zaznacz co najmniej jeden zakończony job.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    setSynthJobId(null);
+    try {
+      const j = await Jobs.createPortfolioSynthesis({
+        source_job_ids: selectedIds,
+        notional_usd: notional,
+        num_positions: slots,
+        include_minute_last_day: minute,
+        report_language: "pl",
+      });
+      setSynthJobId(j.id);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Błąd");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const md = typeof draft?.markdown_table === "string" ? draft.markdown_table : "";
 
   return (
@@ -73,8 +98,8 @@ export default function PortfolioWorkbench() {
       <p className="text-xs text-zinc-500 font-mono max-w-3xl">
         Wybierz zakończone joby w oknie dat, zaznacz tickery, podaj kapitał i liczbę slotów. Backend buduje szkic
         alokacji (wagi po sygnałach) oraz opcjonalnie próbkę świec 1m (ostatni dzień) dla pierwszych walorów —
-        limity yfinance. Materiał <code className="text-zinc-400">report_digest_for_agents</code> można podać
-        dalej do osobnego joba LLM (kolejny krok rozwoju).
+        limity yfinance.         Przycisk poniżej kolejkuje job <code className="text-zinc-400">portfolio_synthesis</code> (jeden przebieg LLM
+        „deep” na skróconych sekcjach raportów wybranych jobów + szkic wag).
       </p>
 
       <div className="flex flex-wrap gap-3 items-end border border-zinc-800 rounded-lg p-4 bg-zinc-950/50 font-mono text-xs">
@@ -172,6 +197,23 @@ export default function PortfolioWorkbench() {
           >
             Zbuduj szkic portfela
           </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void queuePortfolioSynthesis()}
+            className="rounded border border-mint/50 px-4 py-2 text-mint hover:bg-mint/10 disabled:opacity-50"
+          >
+            Zleć syntezę LLM (job w tle)
+          </button>
+          {synthJobId != null && (
+            <p className="text-zinc-400">
+              Utworzono job{" "}
+              <Link className="text-mint underline" to={`/live/${synthJobId}`}>
+                #{synthJobId}
+              </Link>
+              .
+            </p>
+          )}
           {err && <p className="text-red-400">{err}</p>}
         </div>
       </div>

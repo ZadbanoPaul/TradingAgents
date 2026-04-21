@@ -160,6 +160,110 @@ def _push_progress(
     _push_item(job, events, payload)
 
 
+def _run_tradingagents_graph_job(
+    job: AnalysisJob,
+    events: list[dict[str, Any]],
+    base: dict[str, Any],
+    analysts: list[str],
+) -> None:
+    def _emit_transparency(ev: dict[str, Any]) -> None:
+        _push_item(job, events, ev)
+
+    tb = TransparencyCallbackHandler(
+        job_id=job.id,
+        data_dir=get_settings()["data_dir"],
+        quick_model=str(base["quick_think_llm"]),
+        deep_model=str(base["deep_think_llm"]),
+        reasoning_effort=base.get("openai_reasoning_effort"),
+        emit=_emit_transparency,
+    )
+
+    ta = TradingAgentsGraph(analysts, debug=False, config=base, callbacks=[tb])
+    ticker_u = job.ticker.upper()
+    ta.ticker = ticker_u
+
+    bind_job_context(trade_date=str(job.trade_date).strip()[:10], ticker=ticker_u, extra={"job_id": job.id})
+
+    init_agent_state = ta.propagator.create_initial_state(ticker_u, job.trade_date)
+    args = ta.propagator.get_graph_args(callbacks=[tb])
+
+    _push_progress(
+        job,
+        events,
+        "Start analizy",
+        [
+            f"Ticker: {ticker_u}, data: {job.trade_date}",
+            f"LLM: {base['llm_provider']} — quick `{base['quick_think_llm']}`, deep `{base['deep_think_llm']}`",
+            f"OpenAI reasoning_effort: {base.get('openai_reasoning_effort') or '(domyślnie modelu)'}",
+            f"Analitycy: {', '.join(analysts)}",
+            f"Rundy debat: invest={base['max_debate_rounds']}, risk={base['max_risk_discuss_rounds']}",
+            "Wielokrotne wpisy debat (Bull↔Bear, ryzyko A/N/C) są zamierzone przy research_depth > shallow.",
+            "Transparentność: każde wywołanie LLM i narzędzia zapisuje artefakt JSON (tokeny, koszt, pełna treść).",
+        ],
+        step_no=0,
+        agent_label="Worker / konfiguracja joba",
+    )
+
+    prev_state: dict[str, Any] | None = None
+    final_state: dict[str, Any] | None = None
+    step_n = 0
+
+    for raw in ta.graph.stream(init_agent_state, **args):
+        chunk = normalize_stream_chunk(raw)
+        if not chunk:
+            log.warning(
+                "job %s: pominięto krok stream (typ surowy=%s)",
+                job.id,
+                type(raw).__name__,
+            )
+            continue
+        step_n += 1
+        lines = describe_state_transition(prev_state, chunk)
+        agent_label = infer_graph_actor(prev_state, chunk)
+        prev_state = chunk
+        final_state = chunk
+        _push_progress(
+            job,
+            events,
+            f"Krok grafu #{step_n} · {agent_label}",
+            lines,
+            step_no=step_n,
+            agent_label=agent_label,
+        )
+
+    if final_state is None:
+        _push_progress(
+            job,
+            events,
+            "Tryb synchroniczny",
+            ["Stream nie zwrócił stanów — wywołanie invoke()."],
+        )
+        final_state = ta.graph.invoke(init_agent_state, **args)
+
+    ta.curr_state = final_state
+    ta._log_state(job.trade_date, final_state)
+
+    signal = ta.process_signal(final_state["final_trade_decision"])
+
+    job.status = "completed"
+    job.final_signal = str(signal).strip() if signal else None
+    fs = final_state if isinstance(final_state, dict) else dict(final_state)
+    job.result_json = json.dumps(_serialize_final_state(fs), ensure_ascii=False)
+    job.error_message = None
+
+    _push_progress(
+        job,
+        events,
+        "Zakończono",
+        [
+            f"Wyciągnięty sygnał: `{job.final_signal}`",
+            "Pełne raporty i debaty zapisane w wyniku (sekcje poniżej po odświeżeniu).",
+        ],
+        step_no=step_n + 1,
+        agent_label="Worker — finalizacja",
+    )
+
+
 def run_job(db: Session, job_id: int) -> None:
     job = db.get(AnalysisJob, job_id)
     if not job or job.status != "pending":
@@ -227,104 +331,33 @@ def run_job(db: Session, job_id: int) -> None:
             base["instrument_meta"] = merged
         base["_job_trade_date"] = str(job.trade_date).strip()[:10]
 
-        analysts = cfg.get("analysts") or ["market", "social", "news", "fundamentals"]
-
-        def _emit_transparency(ev: dict[str, Any]) -> None:
-            _push_item(job, events, ev)
-
-        tb = TransparencyCallbackHandler(
-            job_id=job.id,
-            data_dir=get_settings()["data_dir"],
-            quick_model=str(base["quick_think_llm"]),
-            deep_model=str(base["deep_think_llm"]),
-            reasoning_effort=base.get("openai_reasoning_effort"),
-            emit=_emit_transparency,
+        raw_analysts = cfg.get("analysts") or ["market", "social", "news", "fundamentals"]
+        analysts = (
+            list(raw_analysts)
+            if isinstance(raw_analysts, (list, tuple))
+            else ["market", "social", "news", "fundamentals"]
         )
 
-        ta = TradingAgentsGraph(analysts, debug=False, config=base, callbacks=[tb])
-        ticker_u = job.ticker.upper()
-        ta.ticker = ticker_u
+        if str(cfg.get("job_kind") or "").lower() == "portfolio_synthesis":
+            from web.backend.portfolio_synthesis_runner import run_portfolio_synthesis_job
 
-        bind_job_context(trade_date=str(job.trade_date).strip()[:10], ticker=ticker_u, extra={"job_id": job.id})
+            def _pp(
+                title: str,
+                lines: list[str],
+                *,
+                step_no: int | None = None,
+                agent_label: str | None = None,
+            ) -> None:
+                _push_progress(job, events, title, lines, step_no=step_no, agent_label=agent_label)
 
-        init_agent_state = ta.propagator.create_initial_state(ticker_u, job.trade_date)
-        args = ta.propagator.get_graph_args(callbacks=[tb])
-
-        _push_progress(
-            job,
-            events,
-            "Start analizy",
-            [
-                f"Ticker: {ticker_u}, data: {job.trade_date}",
-                f"LLM: {base['llm_provider']} — quick `{base['quick_think_llm']}`, deep `{base['deep_think_llm']}`",
-                f"OpenAI reasoning_effort: {base.get('openai_reasoning_effort') or '(domyślnie modelu)'}",
-                f"Analitycy: {', '.join(analysts)}",
-                f"Rundy debat: invest={base['max_debate_rounds']}, risk={base['max_risk_discuss_rounds']}",
-                "Wielokrotne wpisy debat (Bull↔Bear, ryzyko A/N/C) są zamierzone przy research_depth > shallow.",
-                "Transparentność: każde wywołanie LLM i narzędzia zapisuje artefakt JSON (tokeny, koszt, pełna treść).",
-            ],
-            step_no=0,
-            agent_label="Worker / konfiguracja joba",
-        )
-
-        prev_state: dict[str, Any] | None = None
-        final_state: dict[str, Any] | None = None
-        step_n = 0
-
-        for raw in ta.graph.stream(init_agent_state, **args):
-            chunk = normalize_stream_chunk(raw)
-            if not chunk:
-                log.warning(
-                    "job %s: pominięto krok stream (typ surowy=%s)",
-                    job.id,
-                    type(raw).__name__,
-                )
-                continue
-            step_n += 1
-            lines = describe_state_transition(prev_state, chunk)
-            agent_label = infer_graph_actor(prev_state, chunk)
-            prev_state = chunk
-            final_state = chunk
-            _push_progress(
-                job,
-                events,
-                f"Krok grafu #{step_n} · {agent_label}",
-                lines,
-                step_no=step_n,
-                agent_label=agent_label,
+            bind_job_context(
+                trade_date=str(job.trade_date).strip()[:10],
+                ticker=str(job.ticker).upper(),
+                extra={"job_id": job.id, "job_kind": "portfolio_synthesis"},
             )
-
-        if final_state is None:
-            _push_progress(
-                job,
-                events,
-                "Tryb synchroniczny",
-                ["Stream nie zwrócił stanów — wywołanie invoke()."],
-            )
-            final_state = ta.graph.invoke(init_agent_state, **args)
-
-        ta.curr_state = final_state
-        ta._log_state(job.trade_date, final_state)
-
-        signal = ta.process_signal(final_state["final_trade_decision"])
-
-        job.status = "completed"
-        job.final_signal = str(signal).strip() if signal else None
-        fs = final_state if isinstance(final_state, dict) else dict(final_state)
-        job.result_json = json.dumps(_serialize_final_state(fs), ensure_ascii=False)
-        job.error_message = None
-
-        _push_progress(
-            job,
-            events,
-            "Zakończono",
-            [
-                f"Wyciągnięty sygnał: `{job.final_signal}`",
-                "Pełne raporty i debaty zapisane w wyniku (sekcje poniżej po odświeżeniu).",
-            ],
-            step_no=step_n + 1,
-            agent_label="Worker — finalizacja",
-        )
+            run_portfolio_synthesis_job(db, job, user, cfg, base, _pp)
+        else:
+            _run_tradingagents_graph_job(job, events, base, analysts)
     except Exception as e:  # noqa: BLE001
         err = str(e)[:8000]
         job.status = "failed"

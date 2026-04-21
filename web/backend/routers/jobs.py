@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -14,7 +15,7 @@ from web.backend.config import get_settings
 from web.backend.database import get_db
 from web.backend.deps import get_current_user
 from web.backend.models import AnalysisJob, StoredApiKey, User
-from web.backend.schemas import JobCreate, JobDetail, JobOut
+from web.backend.schemas import JobCreate, JobDetail, JobOut, PortfolioSynthesisJobCreate
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -74,6 +75,48 @@ def create_job(
         user_id=user.id,
         ticker=body.ticker.strip().upper(),
         trade_date=body.trade_date.strip(),
+        status="pending",
+        background=bool(body.background),
+        config_json=json.dumps(cfg, ensure_ascii=False),
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+@router.post("/portfolio-synthesis", response_model=JobOut)
+def create_portfolio_synthesis_job(
+    body: PortfolioSynthesisJobCreate,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+):
+    """Kolejkuje job ``job_kind=portfolio_synthesis`` — jeden przebieg LLM na wielu raportach."""
+    _require_openai(db, user)
+    _lang_map = {"en": "English", "pl": "Polish"}
+    td = (body.trade_date or "").strip()
+    if not td:
+        td = datetime.now(timezone.utc).date().isoformat()
+    cfg: dict[str, Any] = {
+        "job_kind": "portfolio_synthesis",
+        "source_job_ids": [int(x) for x in body.source_job_ids],
+        "notional_usd": float(body.notional_usd),
+        "num_positions": int(body.num_positions),
+        "include_minute_last_day": bool(body.include_minute_last_day),
+        "max_context_chars": int(body.max_context_chars),
+        "llm_provider": body.llm_provider,
+        "quick_think_llm": body.quick_think_llm,
+        "deep_think_llm": body.deep_think_llm,
+        "output_language": _lang_map.get(body.report_language, "English"),
+        "report_language": body.report_language,
+        "analysts": [],
+    }
+    if body.reasoning is not None and str(body.reasoning).strip() != "":
+        cfg["openai_reasoning_effort"] = str(body.reasoning).strip()
+    job = AnalysisJob(
+        user_id=user.id,
+        ticker="PF_LLM",
+        trade_date=td[:32],
         status="pending",
         background=bool(body.background),
         config_json=json.dumps(cfg, ensure_ascii=False),
