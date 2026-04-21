@@ -64,7 +64,9 @@ export default function Live() {
     };
   }, [id, poll]);
 
-  const decision = job?.result?.final_trade_decision as string | undefined;
+  const decision =
+    (job?.result?.portfolio_synthesis_report as string | undefined) ||
+    (job?.result?.final_trade_decision as string | undefined);
   const progress = (job?.progress ?? []) as ProgressRow[];
 
   return (
@@ -91,6 +93,10 @@ export default function Live() {
               <tbody>
                 {(
                   [
+                    ["job_kind", job.config.job_kind ?? "—"],
+                    ["source_job_ids", Array.isArray(job.config.source_job_ids) ? (job.config.source_job_ids as number[]).join(", ") : "—"],
+                    ["notional_usd", job.config.notional_usd ?? "—"],
+                    ["num_positions", job.config.num_positions ?? "—"],
                     ["report_language", job.config.report_language ?? "—"],
                     ["output_language", job.config.output_language ?? "—"],
                     ["investment_horizon", job.config.investment_horizon ?? "—"],
@@ -194,7 +200,9 @@ export default function Live() {
 
       {decision && (
         <div className="border border-mint/30 rounded-lg p-4 bg-mint/5">
-          <h2 className="text-mint text-sm font-mono mb-2">Final Trade Decision</h2>
+          <h2 className="text-mint text-sm font-mono mb-2">
+            {job?.result?.portfolio_synthesis_report ? "Synteza portfela (LLM)" : "Final Trade Decision"}
+          </h2>
           <div className="prose prose-invert prose-sm max-w-none font-mono text-zinc-200">
             <ReactMarkdown>{decision}</ReactMarkdown>
           </div>
