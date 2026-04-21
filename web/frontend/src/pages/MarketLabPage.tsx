@@ -42,11 +42,12 @@ export default function MarketLabPage() {
   const [rows2, setRows2] = useState<OhlcvRow[]>([]);
 
   async function loadCompare() {
-    if (!multi.sym2) return;
+    const sym2 = compare.trim().toUpperCase();
+    if (!sym2) return;
     setErr(null);
     setBusy(true);
     try {
-      const j = await MarketPreview.ohlcv(multi.sym2, days);
+      const j = await MarketPreview.ohlcv(sym2, days);
       setRows2((j.rows as OhlcvRow[]) || []);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Błąd");
