@@ -4,6 +4,7 @@ from typing import Any, Optional
 from langchain_openai import ChatOpenAI
 
 from .base_client import BaseLLMClient, normalize_content
+from .openai_capabilities import openai_model_supports_reasoning_effort
 from .validators import validate_model
 
 
@@ -76,6 +77,10 @@ class OpenAIClient(BaseLLMClient):
         for key in _PASSTHROUGH_KWARGS:
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
+
+        if self.provider == "openai" and llm_kwargs.get("reasoning_effort") is not None:
+            if not openai_model_supports_reasoning_effort(self.model):
+                llm_kwargs.pop("reasoning_effort", None)
 
         # Native OpenAI: use Responses API for consistent behavior across
         # all model families. Third-party providers use Chat Completions.

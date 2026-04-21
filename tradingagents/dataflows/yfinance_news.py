@@ -64,9 +64,21 @@ def get_news_yfinance(
     Returns:
         Formatted string containing news articles
     """
+    from tradingagents.analysis_horizon import resolve_data_windows
+    from tradingagents.dataflows.config import get_config
+
+    cfg = get_config()
+    anchor = end_date or start_date
+    if cfg.get("enforce_data_windows", True):
+        w = resolve_data_windows(anchor)
+        start_date, end_date = w.news_start, w.news_end
+        max_count = int(w.news_limit)
+    else:
+        max_count = 20
+
     try:
         stock = yf.Ticker(ticker)
-        news = yf_retry(lambda: stock.get_news(count=20))
+        news = yf_retry(lambda: stock.get_news(count=max(5, min(max_count, 50))))
 
         if not news:
             return f"No news found for {ticker}"
@@ -120,6 +132,15 @@ def get_global_news_yfinance(
     Returns:
         Formatted string containing global news articles
     """
+    from tradingagents.analysis_horizon import resolve_data_windows
+    from tradingagents.dataflows.config import get_config
+
+    cfg = get_config()
+    if cfg.get("enforce_data_windows", True):
+        w = resolve_data_windows(curr_date)
+        look_back_days = int(w.global_news_lookback_days)
+        limit = int(w.global_news_limit)
+
     # Search queries for macro/global news
     search_queries = [
         "stock market economy",

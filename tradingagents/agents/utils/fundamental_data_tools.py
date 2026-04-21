@@ -1,6 +1,13 @@
+import json
+
 from langchain_core.tools import tool
 from typing import Annotated
+
+from tradingagents.agents.utils.tool_json_formatter import tool_response_to_json
+from tradingagents.analysis_horizon import resolve_data_windows
+from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.interface import route_to_vendor
+from tradingagents.runtime_context import get_job_context
 
 
 @tool
@@ -15,9 +22,14 @@ def get_fundamentals(
         ticker (str): Ticker symbol of the company
         curr_date (str): Current date you are trading at, yyyy-mm-dd
     Returns:
-        str: A formatted report containing comprehensive fundamental data
+        str: JSON z polem ``kv`` (etykieta / wartość) do tabel i wykresów słupkowych.
     """
-    return route_to_vendor("get_fundamentals", ticker, curr_date)
+    ctx = get_job_context()
+    td = str(ctx.get("trade_date") or curr_date or "")[:10]
+    raw = route_to_vendor("get_fundamentals", ticker, curr_date)
+    if not isinstance(raw, str):
+        raw = json.dumps(raw, ensure_ascii=False)
+    return tool_response_to_json("get_fundamentals", raw, instrument=ticker, trade_date=td)
 
 
 @tool
@@ -34,9 +46,17 @@ def get_balance_sheet(
         freq (str): Reporting frequency: annual/quarterly (default quarterly)
         curr_date (str): Current date you are trading at, yyyy-mm-dd
     Returns:
-        str: A formatted report containing balance sheet data
+        str: JSON (``kv``) z danymi bilansu.
     """
-    return route_to_vendor("get_balance_sheet", ticker, freq, curr_date)
+    ctx = get_job_context()
+    td = str(ctx.get("trade_date") or curr_date or "")[:10]
+    cfg = get_config()
+    if cfg.get("enforce_data_windows", True) and td:
+        freq = resolve_data_windows(td).fundamentals_freq
+    raw = route_to_vendor("get_balance_sheet", ticker, freq, curr_date)
+    if not isinstance(raw, str):
+        raw = json.dumps(raw, ensure_ascii=False)
+    return tool_response_to_json("get_balance_sheet", raw, instrument=ticker, trade_date=td)
 
 
 @tool
@@ -53,9 +73,17 @@ def get_cashflow(
         freq (str): Reporting frequency: annual/quarterly (default quarterly)
         curr_date (str): Current date you are trading at, yyyy-mm-dd
     Returns:
-        str: A formatted report containing cash flow statement data
+        str: JSON (``kv``) z przepływami pieniężnymi.
     """
-    return route_to_vendor("get_cashflow", ticker, freq, curr_date)
+    ctx = get_job_context()
+    td = str(ctx.get("trade_date") or curr_date or "")[:10]
+    cfg = get_config()
+    if cfg.get("enforce_data_windows", True) and td:
+        freq = resolve_data_windows(td).fundamentals_freq
+    raw = route_to_vendor("get_cashflow", ticker, freq, curr_date)
+    if not isinstance(raw, str):
+        raw = json.dumps(raw, ensure_ascii=False)
+    return tool_response_to_json("get_cashflow", raw, instrument=ticker, trade_date=td)
 
 
 @tool
@@ -72,6 +100,14 @@ def get_income_statement(
         freq (str): Reporting frequency: annual/quarterly (default quarterly)
         curr_date (str): Current date you are trading at, yyyy-mm-dd
     Returns:
-        str: A formatted report containing income statement data
+        str: JSON (``kv``) z rachunkiem zysków i strat.
     """
-    return route_to_vendor("get_income_statement", ticker, freq, curr_date)
+    ctx = get_job_context()
+    td = str(ctx.get("trade_date") or curr_date or "")[:10]
+    cfg = get_config()
+    if cfg.get("enforce_data_windows", True) and td:
+        freq = resolve_data_windows(td).fundamentals_freq
+    raw = route_to_vendor("get_income_statement", ticker, freq, curr_date)
+    if not isinstance(raw, str):
+        raw = json.dumps(raw, ensure_ascii=False)
+    return tool_response_to_json("get_income_statement", raw, instrument=ticker, trade_date=td)

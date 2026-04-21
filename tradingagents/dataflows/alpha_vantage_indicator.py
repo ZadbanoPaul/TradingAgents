@@ -27,6 +27,15 @@ def get_indicator(
     from datetime import datetime
     from dateutil.relativedelta import relativedelta
 
+    from tradingagents.analysis_horizon import resolve_data_windows
+    from tradingagents.dataflows.config import get_config
+
+    cfg = get_config()
+    if cfg.get("enforce_data_windows", True):
+        w = resolve_data_windows(curr_date)
+        interval = w.indicator_interval
+        look_back_days = int(w.indicator_lookback_days)
+
     supported_indicators = {
         "close_50_sma": ("50 SMA", "close"),
         "close_200_sma": ("200 SMA", "close"),
@@ -39,7 +48,8 @@ def get_indicator(
         "boll_ub": ("Bollinger Upper Band", "close"),
         "boll_lb": ("Bollinger Lower Band", "close"),
         "atr": ("ATR", None),
-        "vwma": ("VWMA", "close")
+        "vwma": ("VWMA", "close"),
+        "mfi": ("MFI", "close"),
     }
 
     indicator_descriptions = {
@@ -54,7 +64,8 @@ def get_indicator(
         "boll_ub": "Bollinger Upper Band: Typically 2 standard deviations above the middle line. Usage: Signals potential overbought conditions and breakout zones. Tips: Confirm signals with other tools; prices may ride the band in strong trends.",
         "boll_lb": "Bollinger Lower Band: Typically 2 standard deviations below the middle line. Usage: Indicates potential oversold conditions. Tips: Use additional analysis to avoid false reversal signals.",
         "atr": "ATR: Averages true range to measure volatility. Usage: Set stop-loss levels and adjust position sizes based on current market volatility. Tips: It's a reactive measure, so use it as part of a broader risk management strategy.",
-        "vwma": "VWMA: A moving average weighted by volume. Usage: Confirm trends by integrating price action with volume data. Tips: Watch for skewed results from volume spikes; use in combination with other volume analyses."
+        "vwma": "VWMA: A moving average weighted by volume. Usage: Confirm trends by integrating price action with volume data. Tips: Watch for skewed results from volume spikes; use in combination with other volume analyses.",
+        "mfi": "MFI: Money Flow Index combines price and volume to score buying/selling pressure (similar spirit to RSI but volume-weighted).",
     }
 
     if indicator not in supported_indicators:
@@ -127,6 +138,14 @@ def get_indicator(
                 "series_type": series_type,
                 "datatype": "csv"
             })
+        elif indicator == "mfi":
+            data = _make_api_request("MFI", {
+                "symbol": symbol,
+                "interval": interval,
+                "time_period": str(time_period),
+                "series_type": series_type,
+                "datatype": "csv"
+            })
         elif indicator in ["boll", "boll_ub", "boll_lb"]:
             data = _make_api_request("BBANDS", {
                 "symbol": symbol,
@@ -166,7 +185,8 @@ def get_indicator(
             "macd": "MACD", "macds": "MACD_Signal", "macdh": "MACD_Hist",
             "boll": "Real Middle Band", "boll_ub": "Real Upper Band", "boll_lb": "Real Lower Band",
             "rsi": "RSI", "atr": "ATR", "close_10_ema": "EMA",
-            "close_50_sma": "SMA", "close_200_sma": "SMA"
+            "close_50_sma": "SMA", "close_200_sma": "SMA",
+            "mfi": "MFI",
         }
 
         target_col_name = col_name_map.get(indicator)
@@ -188,11 +208,15 @@ def get_indicator(
             if len(values) > value_col_idx:
                 try:
                     date_str = values[date_col_idx].strip()
-                    # Parse the date
-                    date_dt = datetime.strptime(date_str, "%Y-%m-%d")
+                    try:
+                        if " " in date_str and ":" in date_str:
+                            date_dt = datetime.strptime(date_str[:19], "%Y-%m-%d %H:%M:%S")
+                        else:
+                            date_dt = datetime.strptime(date_str[:10], "%Y-%m-%d")
+                    except ValueError:
+                        continue
 
-                    # Check if date is in our range
-                    if before <= date_dt <= curr_date_dt:
+                    if before.date() <= date_dt.date() <= curr_date_dt.date():
                         value = values[value_col_idx].strip()
                         result_data.append((date_dt, value))
                 except (ValueError, IndexError):

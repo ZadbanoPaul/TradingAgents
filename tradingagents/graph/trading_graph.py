@@ -9,6 +9,7 @@ from typing import Dict, Any, Tuple, List, Optional
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.llm_clients import create_llm_client
+from tradingagents.llm_clients.openai_capabilities import openai_model_supports_reasoning_effort
 
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -30,8 +31,9 @@ from tradingagents.agents.utils.agent_utils import (
     get_income_statement,
     get_news,
     get_insider_transactions,
-    get_global_news
+    get_global_news,
 )
+from tradingagents.agents.utils.news_web_tools import search_web_ticker_news
 
 from .conditional_logic import ConditionalLogic
 from .setup import GraphSetup
@@ -70,23 +72,35 @@ class TradingAgentsGraph:
         os.makedirs(self.config["results_dir"], exist_ok=True)
 
         # Initialize LLMs with provider-specific thinking configuration
-        llm_kwargs = self._get_provider_kwargs()
+        llm_kwargs_base = self._get_provider_kwargs()
 
         # Add callbacks to kwargs if provided (passed to LLM constructor)
         if self.callbacks:
-            llm_kwargs["callbacks"] = self.callbacks
+            llm_kwargs_base["callbacks"] = self.callbacks
+
+        def _kwargs_for_model(model_name: str) -> Dict[str, Any]:
+            """``reasoning_effort`` tylko dla modeli go obsługujących (per model ID)."""
+            kw = dict(llm_kwargs_base)
+            if self.config.get("llm_provider", "").lower() != "openai":
+                return kw
+            eff = self.config.get("openai_reasoning_effort")
+            if eff and openai_model_supports_reasoning_effort(str(model_name)):
+                kw["reasoning_effort"] = eff
+            else:
+                kw.pop("reasoning_effort", None)
+            return kw
 
         deep_client = create_llm_client(
             provider=self.config["llm_provider"],
             model=self.config["deep_think_llm"],
             base_url=self.config.get("backend_url"),
-            **llm_kwargs,
+            **_kwargs_for_model(self.config["deep_think_llm"]),
         )
         quick_client = create_llm_client(
             provider=self.config["llm_provider"],
             model=self.config["quick_think_llm"],
             base_url=self.config.get("backend_url"),
-            **llm_kwargs,
+            **_kwargs_for_model(self.config["quick_think_llm"]),
         )
 
         self.deep_thinking_llm = deep_client.get_llm()
@@ -141,11 +155,6 @@ class TradingAgentsGraph:
             if thinking_level:
                 kwargs["thinking_level"] = thinking_level
 
-        elif provider == "openai":
-            reasoning_effort = self.config.get("openai_reasoning_effort")
-            if reasoning_effort:
-                kwargs["reasoning_effort"] = reasoning_effort
-
         elif provider == "anthropic":
             effort = self.config.get("anthropic_effort")
             if effort:
@@ -187,6 +196,7 @@ class TradingAgentsGraph:
                     get_income_statement,
                 ]
             ),
+            "news_web": ToolNode([search_web_ticker_news]),
         }
 
     def propagate(self, company_name, trade_date):
@@ -232,6 +242,7 @@ class TradingAgentsGraph:
             "market_report": final_state["market_report"],
             "sentiment_report": final_state["sentiment_report"],
             "news_report": final_state["news_report"],
+            "news_web_report": final_state.get("news_web_report", ""),
             "fundamentals_report": final_state["fundamentals_report"],
             "investment_debate_state": {
                 "bull_history": final_state["investment_debate_state"]["bull_history"],

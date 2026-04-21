@@ -2,6 +2,10 @@
 
 from typing import Any
 
+from tradingagents.prompts import keys as prompt_keys
+from tradingagents.prompts import resolve_prompt
+from tradingagents.prompts.defaults import DEFAULT_PROMPTS
+
 
 class SignalProcessor:
     """Processes trading signals to extract actionable decisions."""
@@ -20,13 +24,12 @@ class SignalProcessor:
         Returns:
             Extracted rating (BUY, OVERWEIGHT, HOLD, UNDERWEIGHT, or SELL)
         """
+        sys = resolve_prompt(
+            prompt_keys.SIGNAL_EXTRACTOR_SYSTEM,
+            DEFAULT_PROMPTS[prompt_keys.SIGNAL_EXTRACTOR_SYSTEM],
+        )
         messages = [
-            (
-                "system",
-                "You are an efficient assistant that extracts the trading decision from analyst reports. "
-                "Extract the rating as exactly one of: BUY, OVERWEIGHT, HOLD, UNDERWEIGHT, SELL. "
-                "Output only the single rating word, nothing else.",
-            ),
+            ("system", sys),
             ("human", full_signal),
         ]
 

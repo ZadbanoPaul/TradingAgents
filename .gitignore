@@ -217,3 +217,10 @@ __marimo__/
 
 # Cache
 **/data_cache/
+
+# Web UI (Vite / npm)
+web/frontend/node_modules/
+web/frontend/dist/
+
+# Zbudowany artefakt SPA kopiowany lokalnie — obraz Docker buduje UI sam
+web/backend/static/dist/

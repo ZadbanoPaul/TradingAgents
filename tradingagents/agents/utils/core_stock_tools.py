@@ -1,6 +1,10 @@
 from langchain_core.tools import tool
 from typing import Annotated
+
+from tradingagents.agents.utils.tool_json_formatter import tool_response_to_json
+from tradingagents.analysis_horizon import resolve_effective_stock_window
 from tradingagents.dataflows.interface import route_to_vendor
+from tradingagents.runtime_context import get_job_context
 
 
 @tool
@@ -17,6 +21,10 @@ def get_stock_data(
         start_date (str): Start date in yyyy-mm-dd format
         end_date (str): End date in yyyy-mm-dd format
     Returns:
-        str: A formatted dataframe containing the stock price data for the specified ticker symbol in the specified date range.
+        str: Pojedynczy obiekt JSON (schema tradingagents) z polem ``timeseries`` (OHLCV) do wykresów.
     """
-    return route_to_vendor("get_stock_data", symbol, start_date, end_date)
+    ctx = get_job_context()
+    s, e = resolve_effective_stock_window(ctx.get("trade_date"), start_date, end_date)
+    raw = route_to_vendor("get_stock_data", symbol, s, e)
+    td = str(ctx.get("trade_date") or e or s)[:10]
+    return tool_response_to_json("get_stock_data", raw, instrument=symbol, trade_date=td)

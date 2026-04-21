@@ -1,0 +1,37 @@
+# Zadbano investing masters — aplikacja web + worker (kolejka raportów w tle).
+# Uruchomienie: docker compose -f docker-compose.web.yml up --build
+# UI: http://<PUBLIC_IP>:8088  (API pod /api, worker w osobnym kontenerze)
+# Port na wszystkich interfejsach — w AWS otwórz inbound TCP 8088 w Security Group.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "8088:8088"
+    environment:
+      TRADINGAGENTS_WEB_DATA_DIR: /data
+      TRADINGAGENTS_WEB_DB: /data/app.db
+      TRADINGAGENTS_WEB_SESSION_SECRET: ${TRADINGAGENTS_WEB_SESSION_SECRET:-change-me-session}
+      TRADINGAGENTS_WEB_ENCRYPTION_SECRET: ${TRADINGAGENTS_WEB_ENCRYPTION_SECRET:-change-me-encryption-32bytes-min!!}
+      TRADINGAGENTS_WEB_CORS: ${TRADINGAGENTS_WEB_CORS:-http://127.0.0.1:8088,http://localhost:8088}
+      TRADINGAGENTS_WEB_BOOTSTRAP_USER: ${TRADINGAGENTS_WEB_BOOTSTRAP_USER:-}
+      TRADINGAGENTS_WEB_BOOTSTRAP_PASSWORD: ${TRADINGAGENTS_WEB_BOOTSTRAP_PASSWORD:-}
+    volumes:
+      - tradingagents_web_data:/data
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    command: ["python", "-m", "web.backend.worker"]
+    environment:
+      TRADINGAGENTS_WEB_DATA_DIR: /data
+      TRADINGAGENTS_WEB_DB: /data/app.db
+      TRADINGAGENTS_WEB_ENCRYPTION_SECRET: ${TRADINGAGENTS_WEB_ENCRYPTION_SECRET:-change-me-encryption-32bytes-min!!}
+    volumes:
+      - tradingagents_web_data:/data
+
+volumes:
+  tradingagents_web_data:

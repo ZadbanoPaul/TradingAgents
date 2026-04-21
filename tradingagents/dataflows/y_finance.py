@@ -11,37 +11,48 @@ def get_YFin_data_online(
     start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
     end_date: Annotated[str, "End date in yyyy-mm-dd format"],
 ):
+    from tradingagents.analysis_horizon import resolve_data_windows
+    from tradingagents.dataflows.config import get_config
 
     datetime.strptime(start_date, "%Y-%m-%d")
     datetime.strptime(end_date, "%Y-%m-%d")
 
-    # Create ticker object
+    cfg = get_config()
+    anchor = end_date or start_date
+    if cfg.get("enforce_data_windows", True):
+        w = resolve_data_windows(anchor)
+        start_date, end_date = w.stock_start, w.stock_end
+        intraday_map = {"1min": "1m", "2min": "2m", "5min": "5m", "15min": "15m", "30min": "30m", "60min": "60m"}
+        interval = intraday_map.get(w.av_intraday_interval) if w.use_intraday else None
+    else:
+        interval = None
+
     ticker = yf.Ticker(symbol.upper())
 
-    # Fetch historical data for the specified date range
-    data = yf_retry(lambda: ticker.history(start=start_date, end=end_date))
+    if interval:
+        data = yf_retry(lambda: ticker.history(start=start_date, end=end_date, interval=interval, auto_adjust=True))
+        mode_note = f"interval={interval} (intraday)"
+    else:
+        data = yf_retry(lambda: ticker.history(start=start_date, end=end_date))
+        mode_note = "interval=daily (OHLCV)"
 
-    # Check if data is empty
     if data.empty:
         return (
             f"No data found for symbol '{symbol}' between {start_date} and {end_date}"
         )
 
-    # Remove timezone info from index for cleaner output
     if data.index.tz is not None:
         data.index = data.index.tz_localize(None)
 
-    # Round numerical values to 2 decimal places for cleaner display
     numeric_columns = ["Open", "High", "Low", "Close", "Adj Close"]
     for col in numeric_columns:
         if col in data.columns:
             data[col] = data[col].round(2)
 
-    # Convert DataFrame to CSV string
     csv_string = data.to_csv()
 
-    # Add header information
     header = f"# Stock data for {symbol.upper()} from {start_date} to {end_date}\n"
+    header += f"# Mode: {mode_note}\n"
     header += f"# Total records: {len(data)}\n"
     header += f"# Data retrieved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
 
@@ -55,6 +66,13 @@ def get_stock_stats_indicators_window(
     ],
     look_back_days: Annotated[int, "how many days to look back"],
 ) -> str:
+    from tradingagents.analysis_horizon import resolve_data_windows
+    from tradingagents.dataflows.config import get_config
+
+    cfg = get_config()
+    if cfg.get("enforce_data_windows", True):
+        w = resolve_data_windows(curr_date)
+        look_back_days = int(w.yfinance_indicator_lookback_days)
 
     best_ind_params = {
         # Moving Averages

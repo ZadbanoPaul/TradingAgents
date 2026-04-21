@@ -34,4 +34,16 @@ DEFAULT_CONFIG = {
     "tool_vendors": {
         # Example: "get_stock_data": "alpha_vantage",  # Override category default
     },
+    # --- Konfiguracja zadania (nadpisywana przez worker z job.config_json) ---
+    "enforce_data_windows": True,
+    "investment_horizon": "swing_medium",
+    "research_depth": "medium",
+    "indicators_select_all": False,
+    "selected_indicators": [],
+    "news_query_mode": "daterange",
+    "news_article_limit": 25,
+    "news_date_from": None,
+    "news_date_to": None,
+    "news_recent_hours": 48,
+    "_job_trade_date": None,
 }

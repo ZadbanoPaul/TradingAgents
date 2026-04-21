@@ -5,7 +5,9 @@ from tradingagents.agents.utils.agent_utils import (
     get_language_instruction,
     get_news,
 )
-from tradingagents.dataflows.config import get_config
+from tradingagents.prompts import keys as prompt_keys
+from tradingagents.prompts import resolve_prompt
+from tradingagents.prompts.defaults import DEFAULT_PROMPTS
 
 
 def create_news_analyst(llm):
@@ -19,23 +21,23 @@ def create_news_analyst(llm):
         ]
 
         system_message = (
-            "You are a news researcher tasked with analyzing recent news and trends over the past week. Please write a comprehensive report of the current state of the world that is relevant for trading and macroeconomics. Use the available tools: get_news(query, start_date, end_date) for company-specific or targeted news searches, and get_global_news(curr_date, look_back_days, limit) for broader macroeconomic news. Provide specific, actionable insights with supporting evidence to help traders make informed decisions."
-            + """ Make sure to append a Markdown table at the end of the report to organize key points in the report, organized and easy to read."""
+            resolve_prompt(
+                prompt_keys.NEWS_ANALYST_SYSTEM,
+                DEFAULT_PROMPTS[prompt_keys.NEWS_ANALYST_SYSTEM],
+            )
             + get_language_instruction()
+        )
+
+        collab = resolve_prompt(
+            prompt_keys.TOOL_COLLABORATOR_SYSTEM,
+            DEFAULT_PROMPTS[prompt_keys.TOOL_COLLABORATOR_SYSTEM],
         )
 
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    "You are a helpful AI assistant, collaborating with other assistants."
-                    " Use the provided tools to progress towards answering the question."
-                    " If you are unable to fully answer, that's OK; another assistant with different tools"
-                    " will help where you left off. Execute what you can to make progress."
-                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
-                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
-                    " You have access to the following tools: {tool_names}.\n{system_message}"
-                    "For your reference, the current date is {current_date}. {instrument_context}",
+                    collab,
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]

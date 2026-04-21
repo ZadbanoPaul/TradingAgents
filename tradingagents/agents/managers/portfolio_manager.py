@@ -1,4 +1,7 @@
 from tradingagents.agents.utils.agent_utils import build_instrument_context, get_language_instruction
+from tradingagents.prompts import keys as prompt_keys
+from tradingagents.prompts import resolve_prompt
+from tradingagents.prompts.defaults import DEFAULT_PROMPTS
 
 
 def create_portfolio_manager(llm, memory):
@@ -10,6 +13,8 @@ def create_portfolio_manager(llm, memory):
         risk_debate_state = state["risk_debate_state"]
         market_research_report = state["market_report"]
         news_report = state["news_report"]
+        if state.get("news_web_report"):
+            news_report = f"{news_report}\n\n--- News Web (RSS) ---\n{state['news_web_report']}"
         fundamentals_report = state["fundamentals_report"]
         sentiment_report = state["sentiment_report"]
         research_plan = state["investment_plan"]
@@ -22,37 +27,18 @@ def create_portfolio_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
-        prompt = f"""As the Portfolio Manager, synthesize the risk analysts' debate and deliver the final trading decision.
-
-{instrument_context}
-
----
-
-**Rating Scale** (use exactly one):
-- **Buy**: Strong conviction to enter or add to position
-- **Overweight**: Favorable outlook, gradually increase exposure
-- **Hold**: Maintain current position, no action needed
-- **Underweight**: Reduce exposure, take partial profits
-- **Sell**: Exit position or avoid entry
-
-**Context:**
-- Research Manager's investment plan: **{research_plan}**
-- Trader's transaction proposal: **{trader_plan}**
-- Lessons from past decisions: **{past_memory_str}**
-
-**Required Output Structure:**
-1. **Rating**: State one of Buy / Overweight / Hold / Underweight / Sell.
-2. **Executive Summary**: A concise action plan covering entry strategy, position sizing, key risk levels, and time horizon.
-3. **Investment Thesis**: Detailed reasoning anchored in the analysts' debate and past reflections.
-
----
-
-**Risk Analysts Debate History:**
-{history}
-
----
-
-Be decisive and ground every conclusion in specific evidence from the analysts.{get_language_instruction()}"""
+        tmpl = resolve_prompt(
+            prompt_keys.PORTFOLIO_MANAGER,
+            DEFAULT_PROMPTS[prompt_keys.PORTFOLIO_MANAGER],
+        )
+        prompt = tmpl.format(
+            instrument_context=instrument_context,
+            research_plan=research_plan,
+            trader_plan=trader_plan,
+            past_memory_str=past_memory_str,
+            history=history,
+            language_suffix=get_language_instruction(),
+        )
 
         response = llm.invoke(prompt)
 

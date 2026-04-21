@@ -1,4 +1,18 @@
+import json
+
 from .alpha_vantage_common import _make_api_request
+
+
+def _as_dict(result) -> dict:
+    if isinstance(result, dict):
+        return result
+    if isinstance(result, str):
+        try:
+            parsed = json.loads(result)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
 
 
 def _filter_reports_by_date(result, curr_date: str):
@@ -7,7 +21,9 @@ def _filter_reports_by_date(result, curr_date: str):
     Prevents look-ahead bias by removing fiscal periods that end after
     the simulation's current date.
     """
-    if not curr_date or not isinstance(result, dict):
+    if not curr_date:
+        return result
+    if not isinstance(result, dict):
         return result
     for key in ("annualReports", "quarterlyReports"):
         if key in result:
@@ -38,18 +54,36 @@ def get_fundamentals(ticker: str, curr_date: str = None) -> str:
 
 def get_balance_sheet(ticker: str, freq: str = "quarterly", curr_date: str = None):
     """Retrieve balance sheet data for a given ticker symbol using Alpha Vantage."""
-    result = _make_api_request("BALANCE_SHEET", {"symbol": ticker})
-    return _filter_reports_by_date(result, curr_date)
+    raw = _make_api_request("BALANCE_SHEET", {"symbol": ticker})
+    result = _as_dict(raw)
+    result = _filter_reports_by_date(result, curr_date or "")
+    if freq and str(freq).lower() == "annual":
+        result.pop("quarterlyReports", None)
+    else:
+        result.pop("annualReports", None)
+    return json.dumps(result, ensure_ascii=False)
 
 
 def get_cashflow(ticker: str, freq: str = "quarterly", curr_date: str = None):
     """Retrieve cash flow statement data for a given ticker symbol using Alpha Vantage."""
-    result = _make_api_request("CASH_FLOW", {"symbol": ticker})
-    return _filter_reports_by_date(result, curr_date)
+    raw = _make_api_request("CASH_FLOW", {"symbol": ticker})
+    result = _as_dict(raw)
+    result = _filter_reports_by_date(result, curr_date or "")
+    if freq and str(freq).lower() == "annual":
+        result.pop("quarterlyReports", None)
+    else:
+        result.pop("annualReports", None)
+    return json.dumps(result, ensure_ascii=False)
 
 
 def get_income_statement(ticker: str, freq: str = "quarterly", curr_date: str = None):
     """Retrieve income statement data for a given ticker symbol using Alpha Vantage."""
-    result = _make_api_request("INCOME_STATEMENT", {"symbol": ticker})
-    return _filter_reports_by_date(result, curr_date)
+    raw = _make_api_request("INCOME_STATEMENT", {"symbol": ticker})
+    result = _as_dict(raw)
+    result = _filter_reports_by_date(result, curr_date or "")
+    if freq and str(freq).lower() == "annual":
+        result.pop("quarterlyReports", None)
+    else:
+        result.pop("annualReports", None)
+    return json.dumps(result, ensure_ascii=False)
 

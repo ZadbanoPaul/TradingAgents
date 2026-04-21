@@ -1,6 +1,12 @@
 from langchain_core.tools import tool
 from typing import Annotated
+
+from tradingagents.agents.utils.tool_json_formatter import tool_response_to_json
+from tradingagents.dataflows.config import get_config
 from tradingagents.dataflows.interface import route_to_vendor
+from tradingagents.indicators_catalog import resolve_user_indicator_selection
+from tradingagents.runtime_context import get_job_context
+
 
 @tool
 def get_indicators(
@@ -18,15 +24,43 @@ def get_indicators(
         curr_date (str): The current trading date you are trading on, YYYY-mm-dd
         look_back_days (int): How many days to look back, default is 30
     Returns:
-        str: A formatted dataframe containing the technical indicators for the specified ticker symbol and indicator.
+        str: JSON (schema tradingagents) z ``timeseries`` dla wskaźnika — przy wielu wskaźnikach zwracana jest lista JSON w jednym stringu (bloki oddzielone ``\\n\\n``).
     """
-    # LLMs sometimes pass multiple indicators as a comma-separated string;
-    # split and process each individually.
+    cfg = get_config()
+    ctx = get_job_context()
+    td = str(ctx.get("trade_date") or curr_date)[:10]
+    allowed = set(
+        resolve_user_indicator_selection(
+            select_all=bool(cfg.get("indicators_select_all")),
+            selected=list(cfg.get("selected_indicators") or []),
+            depth=str(cfg.get("research_depth", "medium")),
+            horizon=str(cfg.get("investment_horizon", "swing_medium")),
+        )
+    )
     indicators = [i.strip().lower() for i in indicator.split(",") if i.strip()]
+    indicators = [i for i in indicators if i in allowed][:12]
+    if not indicators:
+        indicators = list(allowed)[:10]
     results = []
     for ind in indicators:
         try:
-            results.append(route_to_vendor("get_indicators", symbol, ind, curr_date, look_back_days))
+            raw = route_to_vendor("get_indicators", symbol, ind, curr_date, look_back_days)
+            results.append(
+                tool_response_to_json(
+                    "get_indicators",
+                    raw,
+                    instrument=symbol,
+                    trade_date=td,
+                    extra_description_lines=[f"Wskaźnik (id): {ind}"],
+                )
+            )
         except ValueError as e:
-            results.append(str(e))
+            results.append(
+                tool_response_to_json(
+                    "get_indicators",
+                    str(e),
+                    instrument=symbol,
+                    trade_date=td,
+                )
+            )
     return "\n\n".join(results)

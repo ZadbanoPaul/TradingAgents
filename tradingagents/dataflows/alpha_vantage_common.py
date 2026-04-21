@@ -62,7 +62,16 @@ def _make_api_request(function_name: str, params: dict) -> dict | str:
     elif "entitlement" in api_params:
         # Remove entitlement if it's None or empty
         api_params.pop("entitlement", None)
-    
+
+    try:
+        from tradingagents.dataflows.av_http_cache import try_get_cached, store_cached
+
+        hit = try_get_cached(function_name, api_params)
+        if hit is not None:
+            return hit
+    except Exception:
+        pass
+
     response = requests.get(API_BASE_URL, params=api_params)
     response.raise_for_status()
 
@@ -78,6 +87,13 @@ def _make_api_request(function_name: str, params: dict) -> dict | str:
                 raise AlphaVantageRateLimitError(f"Alpha Vantage rate limit exceeded: {info_message}")
     except json.JSONDecodeError:
         # Response is not JSON (likely CSV data), which is normal
+        pass
+
+    try:
+        from tradingagents.dataflows.av_http_cache import store_cached
+
+        store_cached(function_name, api_params, response_text)
+    except Exception:
         pass
 
     return response_text
