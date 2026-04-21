@@ -13,6 +13,8 @@ import Support from "./pages/Support";
 import ProcessBpmnPage from "./pages/ProcessBpmnPage";
 import DataCatalogPage from "./pages/DataCatalogPage";
 import MarketLabPage from "./pages/MarketLabPage";
+import Candidates from "./pages/Candidates";
+import PortfolioWorkbench from "./pages/PortfolioWorkbench";
 
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
@@ -53,6 +55,8 @@ export default function App() {
         <Route path="process" element={<ProcessBpmnPage />} />
         <Route path="data-catalog" element={<DataCatalogPage />} />
         <Route path="market-lab" element={<MarketLabPage />} />
+        <Route path="candidates" element={<Candidates />} />
+        <Route path="portfolio" element={<PortfolioWorkbench />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

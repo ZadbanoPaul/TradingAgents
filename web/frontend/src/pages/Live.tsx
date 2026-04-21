@@ -6,11 +6,18 @@ import { TransparencyProgress } from "../components/TransparencyProgress";
 import type { ProgressRow } from "../types/progress";
 
 const REPORT_KEYS: { key: string; label: string }[] = [
+  { key: "orchestrator_report", label: "Raport: Orchestrator" },
   { key: "market_report", label: "Raport: rynek (techniczny)" },
   { key: "sentiment_report", label: "Raport: social / sentyment" },
   { key: "news_report", label: "Raport: newsy" },
   { key: "news_web_report", label: "Raport: News Web (RSS)" },
   { key: "fundamentals_report", label: "Raport: fundamenty" },
+  { key: "accounting_quality_report", label: "Raport: jakość rachunkowości" },
+  { key: "valuation_report", label: "Raport: wycena" },
+  { key: "sector_report", label: "Raport: sektor / konkurencja" },
+  { key: "catalyst_report", label: "Raport: katalizatory" },
+  { key: "data_quality_report", label: "Raport: jakość danych" },
+  { key: "scoring_report", label: "Raport: scoring" },
   { key: "investment_plan", label: "Research Manager" },
   { key: "trader_investment_plan", label: "Trader" },
   { key: "final_trade_decision", label: "Decyzja końcowa (Portfolio Manager)" },

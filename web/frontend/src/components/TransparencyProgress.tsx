@@ -157,15 +157,56 @@ function MessagesTable({
   );
 }
 
+function compactOneLine(jobId: number, p: ProgressRow, i: number): string {
+  const ts = typeof p.ts === "string" ? p.ts : "";
+  const typ = typeof p.type === "string" ? p.type : "graph";
+  const step = typeof p.step_no === "number" ? p.step_no : i + 1;
+  const agent =
+    typeof p.agent_label === "string" && p.agent_label
+      ? p.agent_label
+      : typeof p.title === "string"
+        ? p.title
+        : typ;
+  const tail =
+    typ === "llm"
+      ? String((p as { model?: string }).model || "LLM")
+      : typ === "tool"
+        ? String((p as { tool_name?: string }).tool_name || "narzędzie")
+        : "graf";
+  return `#${step} · job ${jobId} · progress[${i + 1}] · ${ts} · ${agent} · ${tail}`;
+}
+
 export function TransparencyProgress({ jobId, progress }: { jobId: number; progress: ProgressRow[] }) {
+  const [compact, setCompact] = useState(false);
   if (!progress.length) return null;
   return (
     <section className="border border-zinc-800 rounded-lg p-5 bg-zinc-950/60">
-      <h2 className="text-lg font-mono text-mint mb-2">Przebieg analizy (transparentność)</h2>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+        <h2 className="text-lg font-mono text-mint">Przebieg analizy (transparentność)</h2>
+        <div className="flex flex-wrap gap-2 items-center">
+          <button
+            type="button"
+            onClick={() => setCompact((c) => !c)}
+            className="text-[11px] font-mono rounded border border-zinc-600 px-3 py-1.5 text-zinc-200 hover:bg-zinc-800"
+          >
+            {compact ? "Pełny widok kroków" : "Zwinięty widok (agent · czas · id postępu)"}
+          </button>
+        </div>
+      </div>
       <p className="text-xs text-zinc-500 font-mono mb-4">
-        Kroki grafu, każde wywołanie LLM (model, reasoning, tokeny, koszt USD) oraz narzędzia. W tabeli
-        wiadomości: przewijanie, rozwijanie okna oraz opcjonalnie pełna treść z artefaktu JSON.
+        Kroki grafu z etykietą agenta (heurystyka ze stanu LangGraph). Zwinięty widok ukrywa szczegóły LLM/narzędzi —
+        zostaje skrót: numer kroku, czas, identyfikator wpisu w tablicy postępu oraz agent.
       </p>
+      {compact ? (
+        <ol className="space-y-2 font-mono text-[11px] text-zinc-400 border border-zinc-800 rounded-md p-3 max-h-[70vh] overflow-y-auto">
+          {progress.map((p, i) => (
+            <li key={`c-${i}`} className="whitespace-pre-wrap break-words border-b border-zinc-900/80 pb-2 last:border-0">
+              {compactOneLine(jobId, p, i)}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {!compact ? (
       <ol className="space-y-6 border-l border-mint/30 pl-4 ml-1">
         {progress.map((p, i) => {
           const ts = typeof p.ts === "string" ? p.ts : "";
@@ -173,11 +214,14 @@ export function TransparencyProgress({ jobId, progress }: { jobId: number; progr
           if (typ === "graph" || !p.type) {
             const title = typeof p.title === "string" ? p.title : "";
             const lines = Array.isArray(p.lines) ? (p.lines as string[]) : [];
+            const agent = typeof p.agent_label === "string" ? p.agent_label : "";
             return (
               <li key={`${ts}-${i}`} className="relative">
                 <span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-mint" />
                 <p className="text-xs text-zinc-500 font-mono">{ts}</p>
-                <p className="text-xs text-zinc-600 font-mono mb-1">krok grafu</p>
+                <p className="text-xs text-zinc-600 font-mono mb-1">
+                  krok grafu · postęp[{i + 1}] {agent ? `· ${agent}` : ""}
+                </p>
                 <p className="text-sm font-mono text-mint">{title}</p>
                 <ul className="mt-2 space-y-1 text-sm text-zinc-300 font-mono list-disc pl-4">
                   {lines.map((ln, j) => (
@@ -350,6 +394,7 @@ export function TransparencyProgress({ jobId, progress }: { jobId: number; progr
           );
         })}
       </ol>
+      ) : null}
       <LlmTotalsFooter progress={progress} />
     </section>
   );

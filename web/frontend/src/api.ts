@@ -160,3 +160,52 @@ export const Jobs = {
     api<JobOut>("/api/jobs", { method: "POST", json: body }),
   get: (id: number) => api<JobDetail>(`/api/jobs/${id}`),
 };
+
+export type CandidateRow = Record<string, unknown>;
+
+export const Screen = {
+  candidates: (body: {
+    tickers?: string[] | null;
+    lookback_days?: number;
+    max_tickers?: number;
+  }) =>
+    api<{
+      as_of: string;
+      lookback_days: number;
+      universe_note: string;
+      rows: CandidateRow[];
+      errors: string[];
+    }>("/api/screen/candidates", { method: "POST", json: body }),
+};
+
+export type CompletedJobRow = {
+  id: number;
+  ticker: string;
+  trade_date: string;
+  final_signal: string | null;
+  created_at: string | null;
+  duration_ms: number | null;
+};
+
+export const Insights = {
+  completedJobs: (params: { date_from?: string; date_to?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params.date_from) q.set("date_from", params.date_from);
+    if (params.date_to) q.set("date_to", params.date_to);
+    if (params.limit != null) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return api<{ jobs: CompletedJobRow[] }>(
+      `/api/insights/completed-jobs${qs ? `?${qs}` : ""}`
+    );
+  },
+  portfolioDraft: (body: {
+    job_ids: number[];
+    notional_usd?: number;
+    num_positions?: number;
+    include_minute_last_day?: boolean;
+  }) =>
+    api<Record<string, unknown>>("/api/insights/portfolio-draft", {
+      method: "POST",
+      json: body,
+    }),
+};

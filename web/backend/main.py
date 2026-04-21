@@ -19,11 +19,13 @@ from web.backend.instrument_registry import ensure_instrument_rows
 from web.backend.routers import (
     auth,
     data_catalog,
+    insights,
     instruments,
     jobs,
     market_preview,
     openai_meta,
     prompts,
+    screening,
     settings_keys,
 )
 
@@ -68,6 +70,8 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router)
     app.include_router(market_preview.router)
     app.include_router(data_catalog.router)
+    app.include_router(screening.router)
+    app.include_router(insights.router)
 
     static_dir = Path(__file__).resolve().parent / "static" / "dist"
     assets = static_dir / "assets"

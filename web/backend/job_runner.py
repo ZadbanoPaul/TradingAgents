@@ -18,8 +18,10 @@ from web.backend.crypto_store import decrypt_text
 from web.backend.models import AnalysisJob, StoredApiKey, User
 from web.backend.prompt_versions_service import active_bodies_map
 from web.backend.config import get_settings
+from web.backend.database import raw_session
 from web.backend.progress_tracking import (
     describe_state_transition,
+    infer_graph_actor,
     normalize_stream_chunk,
 )
 from web.backend.transparency_callback import TransparencyCallbackHandler
@@ -107,33 +109,55 @@ def _serialize_final_state(final_state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _push_item(db: Session, job: AnalysisJob, events: list[dict[str, Any]], item: dict[str, Any]) -> None:
+def _persist_progress_json(job_id: int, events: list[dict[str, Any]]) -> None:
+    """Osobna sesja SQLAlchemy — unik konfliktu commit() podczas flush z callbacków LLM."""
+    s = raw_session()
+    try:
+        j = s.get(AnalysisJob, job_id)
+        if j is None:
+            return
+        j.progress_json = json.dumps(events, ensure_ascii=False)
+        s.add(j)
+        s.commit()
+    except Exception:
+        log.exception("job %s: zapis postępu (progress_json) nie powiódł się", job_id)
+        try:
+            s.rollback()
+        except Exception:
+            pass
+    finally:
+        s.close()
+
+
+def _push_item(job: AnalysisJob, events: list[dict[str, Any]], item: dict[str, Any]) -> None:
     if "ts" not in item:
         item = {**item, "ts": datetime.now(timezone.utc).isoformat()}
     events.append(item)
     while len(events) > _MAX_PROGRESS_EVENTS:
         events.pop(0)
-    job.progress_json = json.dumps(events, ensure_ascii=False)
-    db.add(job)
-    db.commit()
+    blob = json.dumps(events, ensure_ascii=False)
+    job.progress_json = blob
+    _persist_progress_json(job.id, events)
     if item.get("type") == "graph":
         for ln in (item.get("lines") or [])[:4]:
             log.info("job %s | %s", job.id, str(ln)[:240])
 
 
 def _push_progress(
-    db: Session,
     job: AnalysisJob,
     events: list[dict[str, Any]],
     title: str,
     lines: list[str],
+    *,
+    step_no: int | None = None,
+    agent_label: str | None = None,
 ) -> None:
-    _push_item(
-        db,
-        job,
-        events,
-        {"type": "graph", "title": title, "lines": lines},
-    )
+    payload: dict[str, Any] = {"type": "graph", "title": title, "lines": lines}
+    if step_no is not None:
+        payload["step_no"] = step_no
+    if agent_label:
+        payload["agent_label"] = agent_label
+    _push_item(job, events, payload)
 
 
 def run_job(db: Session, job_id: int) -> None:
@@ -206,7 +230,7 @@ def run_job(db: Session, job_id: int) -> None:
         analysts = cfg.get("analysts") or ["market", "social", "news", "fundamentals"]
 
         def _emit_transparency(ev: dict[str, Any]) -> None:
-            _push_item(db, job, events, ev)
+            _push_item(job, events, ev)
 
         tb = TransparencyCallbackHandler(
             job_id=job.id,
@@ -227,7 +251,6 @@ def run_job(db: Session, job_id: int) -> None:
         args = ta.propagator.get_graph_args(callbacks=[tb])
 
         _push_progress(
-            db,
             job,
             events,
             "Start analizy",
@@ -237,8 +260,11 @@ def run_job(db: Session, job_id: int) -> None:
                 f"OpenAI reasoning_effort: {base.get('openai_reasoning_effort') or '(domyślnie modelu)'}",
                 f"Analitycy: {', '.join(analysts)}",
                 f"Rundy debat: invest={base['max_debate_rounds']}, risk={base['max_risk_discuss_rounds']}",
+                "Wielokrotne wpisy debat (Bull↔Bear, ryzyko A/N/C) są zamierzone przy research_depth > shallow.",
                 "Transparentność: każde wywołanie LLM i narzędzia zapisuje artefakt JSON (tokeny, koszt, pełna treść).",
             ],
+            step_no=0,
+            agent_label="Worker / konfiguracja joba",
         )
 
         prev_state: dict[str, Any] | None = None
@@ -256,13 +282,20 @@ def run_job(db: Session, job_id: int) -> None:
                 continue
             step_n += 1
             lines = describe_state_transition(prev_state, chunk)
+            agent_label = infer_graph_actor(prev_state, chunk)
             prev_state = chunk
             final_state = chunk
-            _push_progress(db, job, events, f"Krok grafu #{step_n}", lines)
+            _push_progress(
+                job,
+                events,
+                f"Krok grafu #{step_n} · {agent_label}",
+                lines,
+                step_no=step_n,
+                agent_label=agent_label,
+            )
 
         if final_state is None:
             _push_progress(
-                db,
                 job,
                 events,
                 "Tryb synchroniczny",
@@ -282,7 +315,6 @@ def run_job(db: Session, job_id: int) -> None:
         job.error_message = None
 
         _push_progress(
-            db,
             job,
             events,
             "Zakończono",
@@ -290,6 +322,8 @@ def run_job(db: Session, job_id: int) -> None:
                 f"Wyciągnięty sygnał: `{job.final_signal}`",
                 "Pełne raporty i debaty zapisane w wyniku (sekcje poniżej po odświeżeniu).",
             ],
+            step_no=step_n + 1,
+            agent_label="Worker — finalizacja",
         )
     except Exception as e:  # noqa: BLE001
         err = str(e)[:8000]
@@ -299,11 +333,11 @@ def run_job(db: Session, job_id: int) -> None:
         job.result_json = None
         try:
             _push_progress(
-                db,
                 job,
                 events,
                 "Błąd",
                 [err[:4000] if err else "Nieznany błąd"],
+                agent_label="Worker — błąd",
             )
         except Exception:
             log.exception("job %s: nie udało się zapisać postępu błędu", job_id)

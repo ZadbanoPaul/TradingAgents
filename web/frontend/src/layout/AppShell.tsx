@@ -9,6 +9,8 @@ const nav = [
   { to: "/process", label: "Process (BPMN)" },
   { to: "/data-catalog", label: "Data catalog" },
   { to: "/market-lab", label: "Market lab" },
+  { to: "/candidates", label: "Kandydaci" },
+  { to: "/portfolio", label: "Portfel (historia)" },
   { to: "/support", label: "Support" },
 ];
 
